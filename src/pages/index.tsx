@@ -1,5 +1,5 @@
-import { Button, Box, Spinner } from '@chakra-ui/react';
-import { useEffect, useMemo } from 'react';
+import { Button, Box, Spinner, useDisclosure, SimpleGrid } from '@chakra-ui/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery } from 'react-query';
 
 import { Header } from '../components/Header';
@@ -7,6 +7,9 @@ import { CardList } from '../components/CardList';
 import { api } from '../services/api';
 import { Loading } from '../components/Loading';
 import { Error } from '../components/Error';
+
+import { Card } from '../components/Card';
+import { ModalViewImage } from '../components/Modal/ViewImage';
 
 interface Card {
   title: string;
@@ -22,6 +25,17 @@ type fetchImagesResponse = {
 };
 
 export default function Home(): JSX.Element {
+
+  const observer = useRef<any>()
+
+  const { onOpen, isOpen, onClose } = useDisclosure()
+
+  const [imageUrlSelected, setImageUrlSelected] = useState('');
+
+  function handleOpenModal(url: string): void {
+    onOpen();
+    setImageUrlSelected(url);
+  }
 
   async function fetchImages({
     pageParam = null,
@@ -49,6 +63,21 @@ export default function Home(): JSX.Element {
       getNextPageParam: lastPage => lastPage.after ?? null,
     }
   );
+  
+  const lastElementRef = useCallback((element)=>{
+    if(isLoading) return
+
+    if (observer.current) observer.current.disconnect()
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasNextPage) {
+        fetchNextPage()
+      }
+    })
+
+    if(element) {
+        observer.current.observe(element)
+    }
+  },[isLoading, hasNextPage])
 
   const formattedData = useMemo(() => {
     if(data){
@@ -57,11 +86,11 @@ export default function Home(): JSX.Element {
       return []
     }
   }, [data]);
-
+  
   useEffect(()=>{
     console.log(formattedData)
   },[formattedData])
-  
+
   if(isLoading){
     return <Loading/>
   }
@@ -71,23 +100,45 @@ export default function Home(): JSX.Element {
   }
 
   return (
-    <>
+    <div>
       <Header />
 
       <Box maxW={1120} px={20} mx="auto" my={20}>
-        <CardList cards={formattedData} />
+        <SimpleGrid columns={[1, 2, 3]} spacing="40px">
+          {formattedData.map((card, index) => {
+            if(formattedData.length === index + 1){
+              return(
+                <Card
+                  key={card.id}
+                  data={card}
+                  viewImage={url => handleOpenModal(url)}
+                  ref={lastElementRef}
+                />
+              )
+            }else{
+              return (
+                <Card
+                  key={card.id}
+                  data={card}
+                  viewImage={url => handleOpenModal(url)}
+                />
+              )
+            }
+          })}
+        </SimpleGrid>
+
+        {isOpen && (
+          <ModalViewImage 
+            isOpen={isOpen}
+            imgUrl={imageUrlSelected}
+            onClose={onClose}
+          />
+        )}
         
-        {hasNextPage && (
-          <Button
-            mt="1rem"
-            onClick={() => fetchNextPage()}
-            role="button"
-            w={['100%', 'auto']}
-          >
-            {isFetchingNextPage ? <Spinner/> : 'Carregar mais'}
-          </Button>
+        {hasNextPage && isFetchingNextPage && (
+          <Spinner/>
         )}
       </Box>
-    </>
+    </div>
   );
 }
